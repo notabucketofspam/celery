@@ -6,6 +6,8 @@ hardware for the stepper motors:
 - two (2) A4988 stepper drivers (or equivalent)
 - two (2) NEMA 17 stepper motors (200 steps/rev, 1.8 deg/step, any voltage / current / etc.)
 
+**IMPORTANT**: go into `CMakeLists.txt` and change the upload port to match the actual COM port for the arduino on your pc.
+
 computer software that you need to download and then put in your system `path`:
 - [the avr-gcc toolchain](https://www.microchip.com/en-us/tools-resources/develop/microchip-studio/gcc-compilers)
   - on the path, it should look more-or-less like `C:\opt\atmel\avr8-gnu-toolchain\bin`
