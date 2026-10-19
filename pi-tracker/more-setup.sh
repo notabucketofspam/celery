@@ -13,3 +13,10 @@ HostKeyAlgorithms ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,ss
 PubkeyAcceptedAlgorithms ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,ssh-ed25519,rsa-sha2-512,rsa-sha2-256,ssh-rsa
 EOF
 
+# we love tmux
+cat << EOF > ~/.tmux.conf
+set -g mouse on
+EOF
+
+# kms
+sudo init 6
