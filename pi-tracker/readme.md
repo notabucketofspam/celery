@@ -9,10 +9,21 @@ some notes about things that are in this folder:
 - [build-opencv.sh](build-opencv.sh) - a script that probably builds opencv from source
 - [more-setup.sh](more-setup.sh) - additional setup tasks that should probably be run on the pi
 
+## how to actually build the raspberry pi part
+
+- at the top, there's a dropdown. it probably says **"Local Machine"** at the start.
+- change it to **"celery.local"** (or whatever your pi is named idk)
+- once that loads, change the dropdown right next to it to **"Build Pi DroneTracker"**
+- hit `ctrl + shift + b` to build it
+
+**IMPORTANT**: you need to go through all of the [Connection Manager Trials of Hercules](./connection-manager.md)
+before you can do the building for the raspberry pi, since this actually does all of the compilation on
+the pi herself.
+
 ## how to make it so that there's no password for `sudo`
 
 assuming your username is `celery`...
 - `sudo visudo`
 - and then put `celery ALL=(ALL:ALL) NOPASSWD: ALL` at the bottom.
- 
-
+- and also save n exit, too.
+- and log out and log back in (i think).
