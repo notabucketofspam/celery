@@ -11,6 +11,10 @@ how to open this with visual studio community 2026:
 - navigate to the `CMakeLists.txt` file which is [right here](CMakeLists.txt)
 - hit the open button
 
+---
+
+### raspberry pi
+
 if you want to build the raspberry pi part:
 - at the top, there's a dropdown. it probably says "Local Machine" at the start.
 - change it to "celery.local" (or whatever your pi is named idk)
@@ -21,14 +25,22 @@ if you want to build the raspberry pi part:
 before you can do the building for the pi, since it actually does all of the compilation on
 the pi itself.
 
+---
+
+### Arduino Mega
+
 if you want to build the arduino mega part:
 - basically the same steps, but it's the "Local Machine" option instead
 - and then in the other dropdown, it's the "Build AVR Firmware (.hex)"
-- `ctrl + shift + b` again
+- `ctrl + shift + b`
 - after that, you can use the "Flash AVR via avrdude (upload)" option and 
 `ctrl + shift + b` again to actually flash it.
 
 **IMPORTANT**: make sure to change the com port in the [`ramps-firmware/CMakeLists.txt`](./ramps-firmware/CMakeLists.txt) so that it's actually the com port that you wanna use.
+
+---
+
+### about:blank
 
 what's the deal with this documentation?
 - sometimes i forget things
