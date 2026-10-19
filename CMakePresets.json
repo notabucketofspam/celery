@@ -1,0 +1,61 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "avr-mega",
+      "displayName": "AVR ATmega2560 (avr-gcc)",
+      "description": "Cross-compiles MegaStepper locally using avr.toolchain.cmake",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "toolchainFile": "${sourceDir}/ramps-firmware/avr.toolchain.cmake",
+      "cacheVariables": {
+        "TARGET_BOARD": "AVR",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      },
+      "vendor": {
+        "microsoft.com/VisualStudioSettings/CMake/1.0": {
+          "intelliSenseMode": "linux-gcc-arm"
+        }
+      }
+    },
+    {
+      "name": "pi-linux-debug",
+      "displayName": "Raspberry Pi 4 (Remote OpenCV)",
+      "description": "Builds DroneTracker remotely on the Raspberry Pi via SSH",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "installDir": "${sourceDir}/out/install/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "TARGET_BOARD": "PI"
+      },
+      "vendor": {
+        "microsoft.com/VisualStudioSettings/CMake/1.0": {
+          "hostOS": [ "Linux" ],
+          "intelliSenseMode": "linux-gcc-arm"
+        },
+        "microsoft.com/VisualStudioRemoteSettings/CMake/2.0": {
+          "remoteSourceRootDir": "$env{HOME}/.vs/$ms{projectDirName}"
+        }
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "build-avr",
+      "displayName": "Build AVR Firmware (.hex)",
+      "configurePreset": "avr-mega"
+    },
+    {
+      "name": "flash-avr",
+      "displayName": "Flash AVR via avrdude (upload)",
+      "configurePreset": "avr-mega",
+      "targets": [ "upload" ]
+    },
+    {
+      "name": "build-pi",
+      "displayName": "Build Pi DroneTracker",
+      "configurePreset": "pi-linux-debug"
+    }
+  ]
+}
