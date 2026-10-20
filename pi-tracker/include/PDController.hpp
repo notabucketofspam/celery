@@ -1,3 +1,4 @@
+// include/PDController.hpp
 #pragma once
 
 class PDController {
@@ -7,6 +8,7 @@ private:
   double max_speed;
   int deadband_px;
   double prev_error = 0.0;
+  bool first_sample = true;
 
 public:
   PDController(double p, double d, double max_spd, int deadband);

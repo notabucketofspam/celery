@@ -1,50 +1,75 @@
+// src/PiCameraStream.cpp
 #include "PiCameraStream.hpp"
 #include <string>
 #include <opencv2/imgproc.hpp>
 
 PiCameraStream::PiCameraStream(int w, int h, int fps) : width(w), height(h) {
-  // Round width up to the nearest multiple of 64 for the Pi 4 ISP hardware stride
   raw_width = (width + 63) & ~63;
   raw_height = (height + 15) & ~15;
-
   yuv_frame_size = static_cast<size_t>(raw_width) * raw_height * 3 / 2;
-  yuv_buffer.create(raw_height + raw_height / 2, raw_width, CV_8UC1);
-  full_bgr.create(raw_height, raw_width, CV_8UC3);
 
-  // --flush forces immediate stdout writes; --shutter 2000 prevents motion blur
   std::string cmd = "rpicam-vid -t 0"
     " --mode 1280:720:10:P"
     " --width " + std::to_string(raw_width) +
     " --height " + std::to_string(raw_height) +
     " --framerate " + std::to_string(fps) +
-    " --shutter 2000"
+    " --exposure sport"
     " --flush"
     " --codec yuv420 --denoise cdn_off --nopreview -o - 2>/dev/null";
 
   pipe = popen(cmd.c_str(), "r");
+  if (pipe) {
+    running = true;
+    reader_thread = std::thread(&PiCameraStream::captureLoop, this);
+  }
 }
 
 PiCameraStream::~PiCameraStream() {
+  running = false;
+  cv.notify_all();
+  if (reader_thread.joinable()) {
+    reader_thread.join();
+  }
   if (pipe) {
     pclose(pipe);
   }
 }
 
+void PiCameraStream::captureLoop() {
+  cv::Mat yuv_buffer(raw_height + raw_height / 2, raw_width, CV_8UC1);
+  cv::Mat full_bgr(raw_height, raw_width, CV_8UC3);
+  cv::Rect crop_roi(0, 0, width, height);
+
+  while (running && pipe) {
+    size_t bytes_read = fread(yuv_buffer.data, 1, yuv_frame_size, pipe);
+    if (bytes_read != yuv_frame_size) {
+      running = false;
+      cv.notify_all();
+      break;
+    }
+
+    cv::cvtColor(yuv_buffer, full_bgr, cv::COLOR_YUV2BGR_I420);
+
+    {
+      std::lock_guard<std::mutex> lock(mtx);
+      full_bgr(crop_roi).copyTo(latest_bgr);
+      has_new_frame = true;
+    }
+    cv.notify_one();
+  }
+}
+
 bool PiCameraStream::isOpened() const {
-  return (pipe != nullptr);
+  return running.load();
 }
 
 bool PiCameraStream::read(cv::Mat& bgr_out) {
-  if (!pipe) return false;
+  std::unique_lock<std::mutex> lock(mtx);
+  cv.wait(lock, [this] { return has_new_frame || !running; });
 
-  size_t bytes_read = fread(yuv_buffer.data, 1, yuv_frame_size, pipe);
-  if (bytes_read != yuv_frame_size) {
-    return false;
-  }
+  if (!running && !has_new_frame) return false;
 
-  cv::cvtColor(yuv_buffer, full_bgr, cv::COLOR_YUV2BGR_I420);
-
-  // Copy only the unpadded 480x320 ROI into the reused bgr_out buffer
-  full_bgr(cv::Rect(0, 0, width, height)).copyTo(bgr_out);
+  latest_bgr.copyTo(bgr_out);
+  has_new_frame = false;
   return true;
 }

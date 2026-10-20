@@ -1,3 +1,4 @@
+// src/main.cpp
 #include <iostream>
 #include <chrono>
 #include <csignal>
@@ -43,9 +44,13 @@ int main() {
   PDController pid_pan(6.0, 0.35, 3500.0, 5);
   PDController pid_tilt(6.0, 0.35, 3500.0, 5);
 
-  // Raise CSRT's PSR confidence threshold so it drops lost targets cleanly
   cv::TrackerCSRT::Params csrt_params;
-  csrt_params.psr_threshold = 0.06f;
+  csrt_params.psr_threshold = 0.06f;      // Drop lock cleanly when target is lost
+  csrt_params.use_color_names = false;    // Skip 10-channel color math on sky silhouettes
+  csrt_params.use_gray = true;            // Rely on intensity + HOG edges
+  csrt_params.use_hog = true;
+  csrt_params.template_size = 100;        // Down from 200 (4x faster 2D FFTs)
+  csrt_params.number_of_scales = 17;      // Down from 33 (2x faster scale estimation)
 
   std::shared_ptr<cv::Tracker> tracker;
   cv::Rect bbox;

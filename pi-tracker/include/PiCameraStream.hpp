@@ -1,6 +1,11 @@
+// include/PiCameraStream.hpp
 #pragma once
 
 #include <cstdio>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
 #include <opencv2/core.hpp>
 
 class PiCameraStream {
@@ -11,8 +16,16 @@ private:
   int raw_width;
   int raw_height;
   size_t yuv_frame_size;
-  cv::Mat yuv_buffer;
-  cv::Mat full_bgr;
+
+  std::thread reader_thread;
+  std::mutex mtx;
+  std::condition_variable cv;
+  std::atomic<bool> running{ false };
+  bool has_new_frame = false;
+
+  cv::Mat latest_bgr;
+
+  void captureLoop();
 
 public:
   PiCameraStream(int w, int h, int fps);

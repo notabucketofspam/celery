@@ -1,3 +1,4 @@
+// include/SkyDetector.hpp
 #pragma once
 
 #include <opencv2/core.hpp>

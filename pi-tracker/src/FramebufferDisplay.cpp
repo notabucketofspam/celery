@@ -1,3 +1,4 @@
+// src/FramebufferDisplay.cpp
 #include "FramebufferDisplay.hpp"
 #include <iostream>
 #include <cstring>
