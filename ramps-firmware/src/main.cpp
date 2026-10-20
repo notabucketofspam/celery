@@ -3,6 +3,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+// use Serial if the pi and arduino are talking via a usb cable
+// use Serial1 if Pi pin 32 (uart5) is connected to Arduino pin D19
+#define WHICH_SERIAL Serial1
+
 // RAMPS 1.4 Stepper Pins
 #define X_STEP_PIN         54
 #define X_DIR_PIN          55
@@ -25,8 +29,8 @@ void recvWithStartEndMarkers() {
   const char startMarker = '<';
   const char endMarker = '>';
 
-  while (Serial.available() > 0 && !newData) {
-    char rc = Serial.read();
+  while (WHICH_SERIAL .available() > 0 && !newData) {
+    char rc = WHICH_SERIAL .read();
 
     if (recvInProgress) {
       if (rc != endMarker) {
@@ -61,7 +65,7 @@ void parseData() {
 }
 
 void setup() {
-  Serial.begin(115200);
+  WHICH_SERIAL .begin(115200);
 
   pinMode(X_ENABLE_PIN, OUTPUT);
   digitalWrite(X_ENABLE_PIN, LOW);

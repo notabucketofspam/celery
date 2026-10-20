@@ -8,6 +8,7 @@ sudo cat << EOF >> /boot/firmware/config.txt
 dtoverlay=imx519
 dtparam=spi=on
 dtoverlay=piscreen,speed=16000000,rotate=90
+dtoverlay=uart5
 EOF
 
 # some changes for ssh to make it play nice with visual studio
@@ -48,6 +49,7 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 EOF
+
 sudo systemctl daemon-reload
 sudo systemctl enable dronetracker.service
 sudo systemctl start dronetracker.service

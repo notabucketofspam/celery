@@ -26,7 +26,9 @@ int main() {
   const int CENTER_Y = FRAME_HEIGHT / 2;
 
   UartController ramps;
-  ramps.connect("/dev/ttyACM0");
+  // use "/dev/ttyACM0" if the arduino is plugged into the pi via a usb cable
+  // use "/dev/ttyAMA1" if Arduino pin D19 is connected to Pi pin 32 (uart5)
+  ramps.connect("/dev/ttyAMA1");
 
   PiCameraStream cap(FRAME_WIDTH, FRAME_HEIGHT, 60);
   if (!cap.isOpened()) {
