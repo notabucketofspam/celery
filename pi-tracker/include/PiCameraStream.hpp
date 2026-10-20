@@ -8,14 +8,16 @@ private:
   FILE* pipe = nullptr;
   int width;
   int height;
+  int raw_width;
+  int raw_height;
   size_t yuv_frame_size;
   cv::Mat yuv_buffer;
+  cv::Mat full_bgr;
 
 public:
   PiCameraStream(int w, int h, int fps);
   ~PiCameraStream();
 
-  // Disable copying since we manage a raw FILE* pipe
   PiCameraStream(const PiCameraStream&) = delete;
   PiCameraStream& operator=(const PiCameraStream&) = delete;
 

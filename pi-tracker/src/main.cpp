@@ -4,6 +4,7 @@
 #include <memory>
 
 #include <opencv2/core.hpp>
+#include <opencv2/imgproc.hpp>
 #include <opencv2/tracking.hpp>
 
 #include "PiCameraStream.hpp"
@@ -27,30 +28,34 @@ int main() {
 
   UartController ramps;
   // use "/dev/ttyACM0" if the arduino is plugged into the pi via a usb cable
-  // use "/dev/ttyAMA1" if Arduino pin D19 is connected to Pi pin 32 (uart5)
-  ramps.connect("/dev/ttyAMA1");
+  // use "/dev/ttyAMA5" if Arduino pin D19 is connected to Pi pin 32 (uart5)
+  ramps.connect("/dev/ttyAMA5");
 
-  PiCameraStream cap(FRAME_WIDTH, FRAME_HEIGHT, 60);
+  // 30 FPS matches CSRT speed better than 60 FPS, preventing pipe buffer lag
+  PiCameraStream cap(FRAME_WIDTH, FRAME_HEIGHT, 30);
   if (!cap.isOpened()) {
     std::cerr << "[Camera] Failed to open rpicam-vid pipe!\n";
     return -1;
   }
 
-  SkyDetector detector(25.0, 15000.0, 100.0);
+  FramebufferDisplay display("/dev/fb0");
+  SkyDetector detector(150.0, 12000.0, 90.0);
   PDController pid_pan(6.0, 0.35, 3500.0, 5);
   PDController pid_tilt(6.0, 0.35, 3500.0, 5);
+
+  // Raise CSRT's PSR confidence threshold so it drops lost targets cleanly
+  cv::TrackerCSRT::Params csrt_params;
+  csrt_params.psr_threshold = 0.06f;
 
   std::shared_ptr<cv::Tracker> tracker;
   cv::Rect bbox;
   bool is_tracking = false;
+  int frame_counter = 0;
 
   cv::Mat frame;
   auto last_time = std::chrono::steady_clock::now();
 
-  std::cout << "[Tracker] OpenCV " << CV_VERSION << " initialized (" << FRAME_WIDTH << "x" << FRAME_HEIGHT << " @ 60fps).\n";
-
-  FramebufferDisplay display("/dev/fb0");
-  int frame_counter = 0;
+  std::cout << "[Tracker] OpenCV " << CV_VERSION << " initialized (480x320).\n";
 
   while (keep_running) {
     if (!cap.read(frame) || frame.empty()) {
@@ -61,7 +66,6 @@ int main() {
     auto now = std::chrono::steady_clock::now();
     double dt = std::chrono::duration<double>(now - last_time).count();
     last_time = now;
-    double fps = (dt > 0.0) ? (1.0 / dt) : 0.0;
 
     if (!is_tracking) {
       ramps.sendSpeeds(0, 0);
@@ -69,14 +73,23 @@ int main() {
       pid_tilt.reset();
 
       if (detector.findTarget(frame, bbox)) {
-        tracker = cv::TrackerCSRT::create();
+        tracker = cv::TrackerCSRT::create(csrt_params);
         tracker->init(frame, bbox);
         is_tracking = true;
-        std::cout << "\n[Tracker] Locked onto target [" << bbox.x << "," << bbox.y
+        std::cout << "[Tracker] Locked onto target [" << bbox.x << "," << bbox.y
           << " " << bbox.width << "x" << bbox.height << "]\n";
       }
     } else {
-      if (tracker->update(frame, bbox)) {
+      bool ok = tracker->update(frame, bbox);
+
+      // Sanity-check bbox: drop lock if target leaves the frame or distorts wildly
+      cv::Rect frame_bounds(0, 0, FRAME_WIDTH, FRAME_HEIGHT);
+      cv::Rect clamped = bbox & frame_bounds;
+      if (!ok || clamped.area() < 50 || clamped.area() > 25000) {
+        std::cout << "[Tracker] Target lost! Returning to search mode...\n";
+        is_tracking = false;
+        ramps.sendSpeeds(0, 0);
+      } else {
         int target_x = bbox.x + (bbox.width / 2);
         int target_y = bbox.y + (bbox.height / 2);
 
@@ -87,32 +100,22 @@ int main() {
         int speed_y = pid_tilt.compute(error_y, dt);
 
         ramps.sendSpeeds(speed_x, speed_y);
-
-        std::cout << "\r[TRACKING] FPS: " << static_cast<int>(fps)
-          << " | Err: (" << error_x << ", " << error_y << ")"
-          << " | Cmd: <" << speed_x << "," << speed_y << ">      " << std::flush;
-      } else {
-        std::cout << "\n[Tracker] Target lost! Searching...\n";
-        is_tracking = false;
-        ramps.sendSpeeds(0, 0);
       }
     }
+
+    // Update SPI display every 3rd frame (~5-10 FPS) without cloning cv::Mat
     frame_counter++;
-    // Only update the SPI screen every 4th frame (~15 FPS) to prevent lag
-    if (display.isOpened() && (frame_counter % 4 == 0)) {
-      cv::Mat display_frame;
-      frame.copyTo(display_frame);
+    if (display.isOpened() && (frame_counter % 3 == 0)) {
+      // Draw center screen reference crosshair (blue)
+      cv::drawMarker(frame, cv::Point(CENTER_X, CENTER_Y),
+        cv::Scalar(255, 100, 0), cv::MARKER_CROSS, 16, 1);
 
       if (is_tracking) {
-        // Draw a thick green rectangle around the drone
-        cv::rectangle(display_frame, bbox, cv::Scalar(0, 255, 0), 3);
-
-        // Draw a center crosshair
-        cv::drawMarker(display_frame, cv::Point(bbox.x + bbox.width / 2, bbox.y + bbox.height / 2),
-          cv::Scalar(0, 0, 255), cv::MARKER_CROSS, 20, 2);
+        cv::rectangle(frame, bbox, cv::Scalar(0, 255, 0), 2);
+        cv::drawMarker(frame, cv::Point(bbox.x + bbox.width / 2, bbox.y + bbox.height / 2),
+          cv::Scalar(0, 0, 255), cv::MARKER_CROSS, 16, 2);
       }
-
-      display.show(display_frame);
+      display.show(frame);
     }
   }
 

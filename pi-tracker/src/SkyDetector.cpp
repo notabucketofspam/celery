@@ -8,7 +8,6 @@ SkyDetector::SkyDetector(double min_a, double max_a, double thresh)
 }
 
 bool SkyDetector::findTarget(const cv::Mat& frame, cv::Rect& out_bbox) const {
-  cv::Mat gray, binary;
   cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
   cv::GaussianBlur(gray, gray, cv::Size(5, 5), 0);
 
@@ -19,12 +18,23 @@ bool SkyDetector::findTarget(const cv::Mat& frame, cv::Rect& out_bbox) const {
 
   double best_area = 0.0;
   cv::Rect best_rect;
+  const int margin = 15; // Ignore horizon/trees near edges of the frame
 
   for (const auto& contour : contours) {
     double area = cv::contourArea(contour);
-    if (area >= min_area && area <= max_area && area > best_area) {
-      best_area = area;
-      best_rect = cv::boundingRect(contour);
+    if (area >= min_area && area <= max_area) {
+      cv::Rect rect = cv::boundingRect(contour);
+
+      if (rect.x <= margin || rect.y <= margin ||
+        rect.x + rect.width >= frame.cols - margin ||
+        rect.y + rect.height >= frame.rows - margin) {
+        continue;
+      }
+
+      if (area > best_area) {
+        best_area = area;
+        best_rect = rect;
+      }
     }
   }
 
