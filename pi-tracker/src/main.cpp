@@ -1,5 +1,6 @@
 // src/main.cpp
 #include <iostream>
+#include <string>
 #include <chrono>
 #include <csignal>
 #include <memory>
@@ -32,7 +33,6 @@ int main() {
   // use "/dev/ttyAMA5" if Arduino pin D19 is connected to Pi pin 32 (uart5)
   ramps.connect("/dev/ttyAMA5");
 
-  // 30 FPS matches CSRT speed better than 60 FPS, preventing pipe buffer lag
   PiCameraStream cap(FRAME_WIDTH, FRAME_HEIGHT, 30);
   if (!cap.isOpened()) {
     std::cerr << "[Camera] Failed to open rpicam-vid pipe!\n";
@@ -40,22 +40,29 @@ int main() {
   }
 
   FramebufferDisplay display("/dev/fb0");
-  SkyDetector detector(150.0, 12000.0, 90.0);
-  PDController pid_pan(6.0, 0.35, 3500.0, 5);
-  PDController pid_tilt(6.0, 0.35, 3500.0, 5);
+  SkyDetector detector(150.0, 8000.0, 45.0);
+
+  // Flip the last boolean to 'true' if either motor turns away from the target
+  PDController pid_pan(6.0, 0.35, 3500.0, 5, false);
+  PDController pid_tilt(6.0, 0.35, 3500.0, 5, false);
 
   cv::TrackerCSRT::Params csrt_params;
-  csrt_params.psr_threshold = 0.06f;      // Drop lock cleanly when target is lost
-  csrt_params.use_color_names = false;    // Skip 10-channel color math on sky silhouettes
-  csrt_params.use_gray = true;            // Rely on intensity + HOG edges
+  csrt_params.psr_threshold = 0.06f;
+  csrt_params.use_color_names = false;
+  csrt_params.use_gray = true;
   csrt_params.use_hog = true;
-  csrt_params.template_size = 100;        // Down from 200 (4x faster 2D FFTs)
-  csrt_params.number_of_scales = 17;      // Down from 33 (2x faster scale estimation)
+  csrt_params.template_size = 100;
+  csrt_params.number_of_scales = 17;
 
   std::shared_ptr<cv::Tracker> tracker;
   cv::Rect bbox;
   bool is_tracking = false;
+  int cooldown_frames = 0;
   int frame_counter = 0;
+
+  int last_speed_x = 0;
+  int last_speed_y = 0;
+  double smoothed_fps = 30.0;
 
   cv::Mat frame;
   auto last_time = std::chrono::steady_clock::now();
@@ -71,13 +78,21 @@ int main() {
     auto now = std::chrono::steady_clock::now();
     double dt = std::chrono::duration<double>(now - last_time).count();
     last_time = now;
+    if (dt > 0.0001) {
+      smoothed_fps = (0.9 * smoothed_fps) + (0.1 * (1.0 / dt));
+    }
 
     if (!is_tracking) {
+      last_speed_x = 0;
+      last_speed_y = 0;
       ramps.sendSpeeds(0, 0);
       pid_pan.reset();
       pid_tilt.reset();
 
-      if (detector.findTarget(frame, bbox)) {
+      if (cooldown_frames > 0) {
+        // Wait for physical turret to stop moving before scanning sky
+        cooldown_frames--;
+      } else if (detector.findTarget(frame, bbox)) {
         tracker = cv::TrackerCSRT::create(csrt_params);
         tracker->init(frame, bbox);
         is_tracking = true;
@@ -87,31 +102,33 @@ int main() {
     } else {
       bool ok = tracker->update(frame, bbox);
 
-      // Sanity-check bbox: drop lock if target leaves the frame or distorts wildly
       cv::Rect frame_bounds(0, 0, FRAME_WIDTH, FRAME_HEIGHT);
       cv::Rect clamped = bbox & frame_bounds;
-      if (!ok || clamped.area() < 50 || clamped.area() > 25000) {
-        std::cout << "[Tracker] Target lost! Returning to search mode...\n";
+
+      if (!ok || clamped.area() < 50 || clamped.area() > 20000) {
+        std::cout << "[Tracker] Target lost! Settling turret...\n";
         is_tracking = false;
+        cooldown_frames = 10; // ~300ms mechanical settling pause
+        last_speed_x = 0;
+        last_speed_y = 0;
         ramps.sendSpeeds(0, 0);
       } else {
-        int target_x = bbox.x + (bbox.width / 2);
-        int target_y = bbox.y + (bbox.height / 2);
+        double target_x = bbox.x + (bbox.width * 0.5);
+        double target_y = bbox.y + (bbox.height * 0.5);
 
-        double error_x = static_cast<double>(target_x - CENTER_X);
-        double error_y = static_cast<double>(target_y - CENTER_Y);
+        double error_x = target_x - CENTER_X;
+        double error_y = target_y - CENTER_Y;
 
-        int speed_x = pid_pan.compute(error_x, dt);
-        int speed_y = pid_tilt.compute(error_y, dt);
+        last_speed_x = pid_pan.compute(error_x, dt);
+        last_speed_y = pid_tilt.compute(error_y, dt);
 
-        ramps.sendSpeeds(speed_x, speed_y);
+        ramps.sendSpeeds(last_speed_x, last_speed_y);
       }
     }
 
-    // Update SPI display every 3rd frame (~5-10 FPS) without cloning cv::Mat
+    // Update SPI display every 3rd frame with field diagnostics HUD
     frame_counter++;
     if (display.isOpened() && (frame_counter % 3 == 0)) {
-      // Draw center screen reference crosshair (blue)
       cv::drawMarker(frame, cv::Point(CENTER_X, CENTER_Y),
         cv::Scalar(255, 100, 0), cv::MARKER_CROSS, 16, 1);
 
@@ -120,11 +137,26 @@ int main() {
         cv::drawMarker(frame, cv::Point(bbox.x + bbox.width / 2, bbox.y + bbox.height / 2),
           cv::Scalar(0, 0, 255), cv::MARKER_CROSS, 16, 2);
       }
+
+      // Draw dark header bar for text readability against bright sky
+      cv::rectangle(frame, cv::Point(0, 0), cv::Point(FRAME_WIDTH, 24),
+        cv::Scalar(0, 0, 0), cv::FILLED);
+
+      std::string state_str = is_tracking ? "LOCKED" : (cooldown_frames > 0 ? "SETTLING" : "SEARCH");
+      cv::Scalar state_color = is_tracking ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 200, 255);
+
+      std::string hud = state_str +
+        " | FPS: " + std::to_string(static_cast<int>(smoothed_fps)) +
+        " | SPD: <" + std::to_string(last_speed_x) + "," + std::to_string(last_speed_y) + ">";
+
+      cv::putText(frame, hud, cv::Point(8, 17), cv::FONT_HERSHEY_SIMPLEX,
+        0.45, state_color, 1, cv::LINE_AA);
+
       display.show(frame);
     }
   }
 
-  std::cout << "\n[Tracker] Stopping motors and exiting.\n";
+  std::cout << "[Tracker] Stopping motors and exiting.\n";
   ramps.sendSpeeds(0, 0);
   return 0;
 }

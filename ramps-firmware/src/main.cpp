@@ -23,6 +23,19 @@ const byte numChars = 32;
 char receivedChars[numChars];
 bool newData = false;
 
+// Target vs. Current speeds for smooth mechanical acceleration
+float targetPanSpeed = 0.0f;
+float targetTiltSpeed = 0.0f;
+float currentPanSpeed = 0.0f;
+float currentTiltSpeed = 0.0f;
+
+// Maximum speed change per millisecond (12.0 steps/ms = 12,000 steps/sec^2)
+const float MAX_ACCEL_PER_MS = 12.0f;
+
+unsigned long lastPacketTime = 0;
+unsigned long lastAccelUpdate = 0;
+const unsigned long WATCHDOG_TIMEOUT_MS = 250;
+
 void recvWithStartEndMarkers() {
   static bool recvInProgress = false;
   static byte ndx = 0;
@@ -54,14 +67,20 @@ void recvWithStartEndMarkers() {
 void parseData() {
   char* strtokIndx = strtok(receivedChars, ",");
   if (!strtokIndx) return;
-  int panSpeed = atoi(strtokIndx);
+  targetPanSpeed = static_cast<float>(atoi(strtokIndx));
 
   strtokIndx = strtok(NULL, ",");
   if (!strtokIndx) return;
-  int tiltSpeed = atoi(strtokIndx);
+  targetTiltSpeed = static_cast<float>(atoi(strtokIndx));
+}
 
-  stepperPan.setSpeed(panSpeed);
-  stepperTilt.setSpeed(tiltSpeed);
+float stepToward(float current, float target, float maxStep) {
+  if (target > current) {
+    return min(current + maxStep, target);
+  } else if (target < current) {
+    return max(current - maxStep, target);
+  }
+  return current;
 }
 
 void setup() {
@@ -80,22 +99,33 @@ void setup() {
   stepperTilt.setSpeed(0);
 }
 
-unsigned long lastPacketTime = 0;
-const unsigned long WATCHDOG_TIMEOUT_MS = 250;
-
 void loop() {
   recvWithStartEndMarkers();
   if (newData) {
     parseData();
     newData = false;
-    // Reset watchdog timer on every valid packet
     lastPacketTime = millis();
   }
 
-  // stop motors if Pi stops sending updates
-  if (millis() - lastPacketTime > WATCHDOG_TIMEOUT_MS) {
-    stepperPan.setSpeed(0);
-    stepperTilt.setSpeed(0);
+  unsigned long now = millis();
+
+  // Safety watchdog: ramp down to zero if Pi stops sending packets
+  if (now - lastPacketTime > WATCHDOG_TIMEOUT_MS) {
+    targetPanSpeed = 0.0f;
+    targetTiltSpeed = 0.0f;
+  }
+
+  // 1000 Hz smooth velocity ramp to prevent stepper rotor stalls
+  if (now - lastAccelUpdate >= 1) {
+    float dt_ms = static_cast<float>(now - lastAccelUpdate);
+    lastAccelUpdate = now;
+
+    float maxDelta = MAX_ACCEL_PER_MS * dt_ms;
+    currentPanSpeed = stepToward(currentPanSpeed, targetPanSpeed, maxDelta);
+    currentTiltSpeed = stepToward(currentTiltSpeed, targetTiltSpeed, maxDelta);
+
+    stepperPan.setSpeed(currentPanSpeed);
+    stepperTilt.setSpeed(currentTiltSpeed);
   }
 
   stepperPan.runSpeed();
