@@ -10,6 +10,7 @@
 #include "UartController.hpp"
 #include "PDController.hpp"
 #include "SkyDetector.hpp"
+#include "FramebufferDisplay.hpp"
 
 volatile std::sig_atomic_t keep_running = 1;
 void sigint_handler(int) {
@@ -20,7 +21,7 @@ int main() {
   std::signal(SIGINT, sigint_handler);
 
   const int FRAME_WIDTH = 480;
-  const int FRAME_HEIGHT = 270;
+  const int FRAME_HEIGHT = 320;
   const int CENTER_X = FRAME_WIDTH / 2;
   const int CENTER_Y = FRAME_HEIGHT / 2;
 
@@ -44,7 +45,10 @@ int main() {
   cv::Mat frame;
   auto last_time = std::chrono::steady_clock::now();
 
-  std::cout << "[Tracker] OpenCV " << CV_VERSION << " initialized (480x270 @ 60fps).\n";
+  std::cout << "[Tracker] OpenCV " << CV_VERSION << " initialized (" << FRAME_WIDTH << "x" << FRAME_HEIGHT << " @ 60fps).\n";
+
+  FramebufferDisplay display("/dev/fb0");
+  int frame_counter = 0;
 
   while (keep_running) {
     if (!cap.read(frame) || frame.empty()) {
@@ -90,6 +94,23 @@ int main() {
         is_tracking = false;
         ramps.sendSpeeds(0, 0);
       }
+    }
+    frame_counter++;
+    // Only update the SPI screen every 4th frame (~15 FPS) to prevent lag
+    if (display.isOpened() && (frame_counter % 4 == 0)) {
+      cv::Mat display_frame;
+      frame.copyTo(display_frame);
+
+      if (is_tracking) {
+        // Draw a thick green rectangle around the drone
+        cv::rectangle(display_frame, bbox, cv::Scalar(0, 255, 0), 3);
+
+        // Draw a center crosshair
+        cv::drawMarker(display_frame, cv::Point(bbox.x + bbox.width / 2, bbox.y + bbox.height / 2),
+          cv::Scalar(0, 0, 255), cv::MARKER_CROSS, 20, 2);
+      }
+
+      display.show(display_frame);
     }
   }
 

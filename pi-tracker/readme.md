@@ -3,6 +3,7 @@
 the hardware for the camera tracking:
 - Raspberry Pi 4 Model B
 - Arducam UC-A73 Rev. B
+- Kuman 3.5" 480x320 TFT LCD (spi)
 
 some notes about things that are in this folder:
 - [connection-manager.md](connection-manager.md) - how to connect this abomination to visual studio community 2026

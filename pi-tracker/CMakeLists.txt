@@ -15,6 +15,7 @@ set(SOURCES
     src/UartController.cpp
     src/PDController.cpp
     src/SkyDetector.cpp
+    src/FramebufferDisplay.cpp
 )
 
 add_executable(DroneTracker ${SOURCES})

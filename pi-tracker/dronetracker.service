@@ -1,0 +1,18 @@
+[Unit]
+Description=DroneTracker OpenCV Service
+After=multi-user.target
+
+# note: this file is called `/etc/systemd/system/dronetracker.service`
+
+[Service]
+Type=simple
+User=celery
+WorkingDirectory=/home/celery/.vs/celery/out/build/pi-linux-debug/pi-tracker/
+ExecStart=/home/celery/.vs/celery/out/build/pi-linux-debug/pi-tracker/DroneTracker
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
