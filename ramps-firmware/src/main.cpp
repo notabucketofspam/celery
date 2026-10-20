@@ -29,8 +29,8 @@ void recvWithStartEndMarkers() {
   const char startMarker = '<';
   const char endMarker = '>';
 
-  while (WHICH_SERIAL .available() > 0 && !newData) {
-    char rc = WHICH_SERIAL .read();
+  while (WHICH_SERIAL.available() > 0 && !newData) {
+    char rc = WHICH_SERIAL.read();
 
     if (recvInProgress) {
       if (rc != endMarker) {
@@ -65,7 +65,7 @@ void parseData() {
 }
 
 void setup() {
-  WHICH_SERIAL .begin(115200);
+  WHICH_SERIAL.begin(115200);
 
   pinMode(X_ENABLE_PIN, OUTPUT);
   digitalWrite(X_ENABLE_PIN, LOW);
@@ -80,11 +80,22 @@ void setup() {
   stepperTilt.setSpeed(0);
 }
 
+unsigned long lastPacketTime = 0;
+const unsigned long WATCHDOG_TIMEOUT_MS = 250;
+
 void loop() {
   recvWithStartEndMarkers();
   if (newData) {
     parseData();
     newData = false;
+    // Reset watchdog timer on every valid packet
+    lastPacketTime = millis();
+  }
+
+  // stop motors if Pi stops sending updates
+  if (millis() - lastPacketTime > WATCHDOG_TIMEOUT_MS) {
+    stepperPan.setSpeed(0);
+    stepperTilt.setSpeed(0);
   }
 
   stepperPan.runSpeed();
